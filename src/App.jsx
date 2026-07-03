@@ -3,7 +3,6 @@ import * as XLSX from 'xlsx';
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
-// Configuración de tu proyecto (la que obtuviste de Firebase Console)
 const firebaseConfig = {
   apiKey: "AIzaSyB8NwywIMy-w_7sXutsqk1XEmS50-in2Jk",
   authDomain: "inventario-1acf3.firebaseapp.com",
@@ -21,9 +20,8 @@ const DOC_ID = "mi_inventario_snc";
 function App() {
   const [inventario, setInventario] = useState([]);
   const [busqueda, setBusqueda] = useState('');
-  const [fasePantalla, setFasePantalla] = useState('dashboard');
+  const [fasePantalla, setFasePantalla] = useState('bienvenida');
 
-  // Cargar datos al iniciar
   useEffect(() => {
     const cargarDatos = async () => {
       try {
@@ -32,17 +30,19 @@ function App() {
         if (docSnap.exists()) {
           setInventario(docSnap.data().items || []);
         }
-      } catch (error) {
-        console.error("Error al cargar datos de Firebase:", error);
-      }
+      } catch (error) { console.error("Error:", error); }
     };
     cargarDatos();
   }, []);
 
-  // Sincronizar datos con Firebase
   const syncFirebase = async (nuevoInventario) => {
     setInventario(nuevoInventario);
     await setDoc(doc(db, "datos", DOC_ID), { items: nuevoInventario });
+  };
+
+  const iniciarSesionAnimado = () => {
+    setFasePantalla('saliendo'); 
+    setTimeout(() => { setFasePantalla('dashboard'); }, 700); 
   };
 
   const handleExcelImport = (e) => {
@@ -54,9 +54,8 @@ function App() {
       const wb = XLSX.read(bstr, { type: 'binary' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-      
       let idxHeader = rows.findIndex(r => r.some(c => String(c).toUpperCase().includes('CÓDIGO')));
-      if (idxHeader === -1) return alert("No se encontró la estructura de encabezado");
+      if (idxHeader === -1) return alert("Estructura no encontrada");
 
       const inventarioProcesado = [];
       for (let i = idxHeader + 1; i < rows.length; i++) {
@@ -73,9 +72,18 @@ function App() {
         });
       }
       syncFirebase(inventarioProcesado);
-      alert("¡Sincronización exitosa con la nube!");
     };
     reader.readAsBinaryString(file);
+  };
+
+  const modificarStock = (id, cambio) => {
+    const nuevo = inventario.map(item => {
+      if (item.id === id) {
+        return { ...item, cantidad: Math.max(0, item.cantidad + cambio), ultimaActualizacion: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+      }
+      return item;
+    });
+    syncFirebase(nuevo);
   };
 
   const productosFiltrados = inventario.filter(item => 
@@ -84,25 +92,38 @@ function App() {
   );
 
   return (
-    <div style={{ padding: '40px', backgroundColor: '#2D0208', minHeight: '100vh', color: '#ffffff' }}>
-      <h2>Inventario SNC</h2>
-      <input type="file" accept=".xlsx" onChange={handleExcelImport} />
-      <input type="text" placeholder="Buscar..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
-      
-      <table style={{ width: '100%', marginTop: '20px', color: 'white' }}>
-        <thead>
-          <tr><th>Código</th><th>Nombre</th><th>Cantidad</th></tr>
-        </thead>
-        <tbody>
-          {productosFiltrados.map((item, index) => (
-            <tr key={index}>
-              <td>{item.id}</td>
-              <td>{item.nombre}</td>
-              <td>{item.cantidad}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div style={{ fontFamily: "'Montserrat', sans-serif", backgroundColor: '#2D0208', minHeight: '100vh', color: '#ffffff' }}>
+      {(fasePantalla === 'bienvenida' || fasePantalla === 'saliendo') && (
+        <div className={`contenedor-bienvenida ${fasePantalla === 'saliendo' ? 'subir-efecto' : ''}`} style={{ height: '100vh', background: 'radial-gradient(circle at center, #510711 0%, #160003 100%)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <button onClick={iniciarSesionAnimado} style={{ padding: '15px 30px', cursor: 'pointer', background: '#F5C667', border: 'none', fontWeight: 'bold' }}>Iniciar sesión</button>
+        </div>
+      )}
+
+      {fasePantalla === 'dashboard' && (
+        <div style={{ padding: '60px 40px' }}>
+          <h2>Sistema SNC 2026</h2>
+          <input type="file" accept=".xlsx" onChange={handleExcelImport} />
+          <input type="text" placeholder="Buscar..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+          <table style={{ width: '100%', marginTop: '20px', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ color: '#F5C667', borderBottom: '1px solid #555' }}>
+                <th>Código</th><th>Nombre</th><th>Cantidad</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {productosFiltrados.map((item, index) => (
+                <tr key={index} style={{ borderBottom: '1px solid #333' }}>
+                  <td>{item.id}</td><td>{item.nombre}</td><td>{item.cantidad}</td>
+                  <td>
+                    <button onClick={() => modificarStock(item.id, -1)}>-</button>
+                    <button onClick={() => modificarStock(item.id, 1)}>+</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
